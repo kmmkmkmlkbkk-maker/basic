@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>دردشة Firebase بسيطة</title>
+    <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Cairo', sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: #f4f4f4;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+        }
+        .chat-container {
+            width: 100%;
+            max-width: 400px;
+            height: 80vh;
+            background-color: #fff;
+            box-shadow: 0 0 10px rgba(0,0,0,0.1);
+            display: flex;
+            flex-direction: column;
+            border-radius: 8px;
+            overflow: hidden;
+        }
+        .chat-header {
+            background-color: #007bff;
+            color: white;
+            padding: 15px;
+            text-align: center;
+            font-size: 1.2em;
+        }
+        .chat-area {
+            flex-grow: 1;
+            padding: 15px;
+            overflow-y: auto;
+            background-color: #e9e9e9;
+        }
+        .message {
+            margin-bottom: 10px;
+            padding: 8px 12px;
+            border-radius: 15px;
+            max-width: 80%;
+            word-wrap: break-word; /* لكسر الكلمات الطويلة */
+        }
+        .incoming {
+            background-color: #d1d1d1;
+            align-self: flex-start;
+            margin-right: auto;
+        }
+        .outgoing {
+            background-color: #007bff;
+            color: white;
+            align-self: flex-end;
+            margin-left: auto;
+        }
+        .input-area {
+            display: flex;
+            padding: 10px;
+            border-top: 1px solid #eee;
+            background-color: #fff;
+        }
+        .message-input {
+            flex-grow: 1;
+            border: 1px solid #ddd;
+            border-radius: 20px;
+            padding: 8px 15px;
+            outline: none;
+            margin-right: 10px;
+            font-size: 1em;
+        }
+        .send-button {
+            background-color: #007bff;
+            color: white;
+            border: none;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            cursor: pointer;
+            font-size: 1.2em;
+            outline: none;
+        }
+        .send-button:hover {
+            background-color: #0056b3;
+        }
+    </style>
+</head>
+<body>
+    <div class="chat-container">
+        <div class="chat-header">دردشة بسيطة (مع Firebase)</div>
+        <div class="chat-area" id="chatArea">
+            </div>
+        <div class="input-area">
+            <input type="text" id="messageInput" class="message-input" placeholder="اكتب رسالتك...">
+            <button id="sendMessageButton" class="send-button">
+                <i class="fas fa-paper-plane"></i>
+            </button>
+        </div>
+    </div>
+
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-auth-compat.js"></script> 
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/js/all.min.js"></script>
+
+    <script>
+        // ==========================================================
+        //  !!!  هام جداً: إعدادات Firebase الخاصة بك هنا  !!!
+        //  الصق الكود الذي نسخته من Firebase Console في هذا المكان
+        // ==========================================================
+        const firebaseConfig = {
+            apiKey: "YOUR_API_KEY", 
+            authDomain: "YOUR_PROJECT_ID.firebaseapp.com",
+            projectId: "YOUR_PROJECT_ID",
+            storageBucket: "YOUR_PROJECT_ID.appspot.com",
+            messagingSenderId: "YOUR_MESSAGING_SENDER_ID",
+            appId: "YOUR_APP_ID"
+        };
+
+        // تهيئة Firebase
+        firebase.initializeApp(firebaseConfig);
+        const db = firebase.firestore();
+        const auth = firebase.auth(); 
+
+        // ==========================================================
+        //  منطق JavaScript لوظيفة الدردشة مع Firebase
+        // ==========================================================
+        document.addEventListener('DOMContentLoaded', () => {
+            const messageInput = document.getElementById('messageInput');
+            const sendMessageButton = document.getElementById('sendMessageButton');
+            const chatArea = document.getElementById('chatArea');
+
+            let currentUser = "anonymous"; // معرف المستخدم الافتراضي
+
+            // محاولة تسجيل الدخول كمستخدم مجهول تلقائيًا
+            auth.signInAnonymously().catch((error) => {
+                console.error("Error signing in anonymously:", error);
+                // يمكنك إضافة رسالة خطأ للمستخدم هنا إذا فشل تسجيل الدخول
+            });
+
+            // عندما يتغير حالة المصادقة (عند تسجيل الدخول بنجاح)
+            auth.onAuthStateChanged((user) => {
+                if (user) {
+                    currentUser = user.uid; // استخدام معرف UID الحقيقي للمستخدم
+                    console.log("Logged in as:", currentUser);
+                } else {
+                    console.log("No user logged in, or anonymous login failed.");
+                }
+            });
+
+            // 1. وظيفة لعرض الرسائل في الواجهة الأمامية
+            function displayMessage(messageText, senderId, timestamp, isOutgoing) {
+                const messageDiv = document.createElement('div');
+                messageDiv.classList.add('message', isOutgoing ? 'outgoing' : 'incoming');
+                
+                let displayTime = '';
+                if (timestamp) {
+                    const date = timestamp.toDate(); 
+                    displayTime = date.toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' });
+                }
+
+                messageDiv.innerHTML = `
+                    <p>${messageText}</p>
+                    <small style="font-size: 0.7em; opacity: 0.7; color: inherit;">${displayTime}</small>
+                `;
+                chatArea.appendChild(messageDiv);
+                chatArea.scrollTop = chatArea.scrollHeight; 
+            }
+
+            // 2. وظيفة لإرسال الرسالة إلى Firestore
+            async function sendMessageToFirebase() {
+                const messageText = messageInput.value.trim();
+                if (messageText !== '' && currentUser !== "anonymous") { 
+                    try {
+                        await db.collection("messages").add({
+                            text: messageText,
+                            senderId: currentUser, 
+                            timestamp: firebase.firestore.FieldValue.serverTimestamp() 
+                        });
+                        messageInput.value = ''; 
+                    } catch (error) {
+                        console.error("Error writing message to Firestore: ", error);
+                        alert("حدث خطأ أثناء إرسال الرسالة. يرجى التحقق من إعدادات Firebase.");
+                    }
+                } else if (messageText !== '' && currentUser === "anonymous") {
+                    alert("يرجى الانتظار حتى يتم تسجيل الدخول تلقائيًا للمراسلة قبل الإرسال.");
+                }
+            }
+
+            // 3. الاستماع للرسائل الجديدة من Firestore وعرضها في الواجهة
+            db.collection("messages")
+                .orderBy("timestamp", "asc") 
+                .onSnapshot((snapshot) => {
+                    chatArea.innerHTML = ''; 
+                    snapshot.forEach((doc) => {
+                        const message = doc.data();
+                        const isOutgoing = (message.senderId === currentUser); 
+                        displayMessage(message.text, message.senderId, message.timestamp, isOutgoing);
+                    });
+                }, (error) => {
+                    console.error("Error listening to messages: ", error);
+                    alert("حدث خطأ أثناء تحميل الرسائل. يرجى التحقق من اتصالك وإعدادات Firebase.");
+                });
+
+            // ربط زر الإرسال وحقل الإدخال بوظيفة الإرسال لـ Firebase
+            sendMessageButton.addEventListener('click', sendMessageToFirebase);
+            messageInput.addEventListener('keypress', (event) => {
+                if (event.key === 'Enter') {
+                    sendMessageToFirebase();
+                }
+            });
+        });
+    </script>
+</body>
+</html>
